@@ -77,11 +77,10 @@ if barstate.isconfirmed
             refreshLowLine := true
 
     if structureState == 1
-        candlesSince2CR += 1
         if na(tempLow) or low < tempLow
             tempLow := low
             tempLowBar := bar_index
-        if not na(confirmedHigh) and close > confirmedHigh
+        if not na(confirmedHigh) and close > confirmedHigh and candlesSince2CR >= 1
             bullishBOSEvent := true
             bullishBOSLevel := confirmedHigh
             bullishBOSStartBar := nz(confirmedHighBar, bar_index)
@@ -103,13 +102,14 @@ if barstate.isconfirmed
             tempLowBar := na
             tempHighBar := na
             refreshLowLine := true
+        if structureState == 1
+            candlesSince2CR += 1
 
     if structureState == 2
-        candlesSince2CR += 1
         if na(tempHigh) or high > tempHigh
             tempHigh := high
             tempHighBar := bar_index
-        if not na(confirmedLow) and close < confirmedLow
+        if not na(confirmedLow) and close < confirmedLow and candlesSince2CR >= 1
             bearishBOSEvent := true
             bearishBOSLevel := confirmedLow
             bearishBOSStartBar := nz(confirmedLowBar, bar_index)
@@ -131,6 +131,8 @@ if barstate.isconfirmed
             tempLowBar := na
             tempHighBar := na
             refreshHighLine := true
+        if structureState == 2
+            candlesSince2CR += 1
 
     if not bullishBOSEvent and not bearishBOSEvent and structureState == 0
         if lastStructureDirection == -1 and lastCHOCHDirection != 1 and twoClosesAboveLRM
