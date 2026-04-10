@@ -1,0 +1,213 @@
+//@version=6
+indicator("Top G Style SMC v6", overlay=true, max_lines_count=500, max_labels_count=500)
+
+showBOS = input.bool(true, "Show BOS")
+showCHOCH = input.bool(true, "Show CHOCH")
+showStructure = input.bool(true, "Show Structure Levels")
+showLiquidity = input.bool(false, "Show Liquidity Sweeps")
+displacementMultiplier = input.float(1.5, "Displacement Multiplier", minval=1.0, maxval=3.0, step=0.1)
+
+var float confirmedHigh = na
+var float confirmedLow = na
+var float lastBearishHigh = na
+var float lastBullishLow = na
+
+var bool bosTriggered = false
+var bool chochTriggered = false
+var int structureState = 0
+var int lastStructureDirection = 0
+var int lastCHOCHDirection = 0
+
+var int candlesSince2CR = 0
+var float twoCRStartHigh = na
+var float twoCRStartLow = na
+var int twoCRStartBar = na
+
+var float tempLow = na
+var float tempHigh = na
+var int tempLowBar = na
+var int tempHighBar = na
+
+var float lastSignificantLow = na
+var float lastSignificantHigh = na
+var bool liquiditySwept = false
+
+var line activeConfirmedHighLine = na
+var line activeConfirmedLowLine = na
+
+body = math.abs(close - open)
+prevBody = math.abs(close[1] - open[1])
+range = high - low
+avgRange = ((high[1] - low[1]) + (high[2] - low[2]) + (high[3] - low[3])) / 3.0
+avgBody = (math.abs(close[1] - open[1]) + math.abs(close[2] - open[2]) + math.abs(close[3] - open[3]) + math.abs(close[4] - open[4]) + math.abs(close[5] - open[5])) / 5.0
+midpoint = (high + low) / 2.0
+closeNearHigh = close > midpoint + range * 0.3
+closeNearLow = close < midpoint - range * 0.3
+strongDisplacement = body > prevBody or range > avgRange
+bullishDisplacement = strongDisplacement and closeNearHigh
+bearishDisplacement = strongDisplacement and closeNearLow
+bullish2CR = bar_index > 0 and close[1] > open[1] and close > open and close > high[1]
+bearish2CR = bar_index > 0 and close[1] < open[1] and close < open and close < low[1]
+strongBullishCHOCH = not na(lastBearishHigh) and close > lastBearishHigh and body > avgBody * displacementMultiplier and close > midpoint + range * 0.35
+consecutiveClosesAboveLRM = not na(lastBearishHigh) and close > lastBearishHigh and close[1] > lastBearishHigh
+strongBearishCHOCH = not na(lastBullishLow) and close < lastBullishLow and body > avgBody * displacementMultiplier and close < midpoint - range * 0.35
+consecutiveClosesBelowLSM = not na(lastBullishLow) and close < lastBullishLow and close[1] < lastBullishLow
+sweptLows = not na(lastSignificantLow[1]) and low < lastSignificantLow[1] and lastStructureDirection == -1
+sweptHighs = not na(lastSignificantHigh[1]) and high > lastSignificantHigh[1] and lastStructureDirection == 1
+
+structureBodyThreshold = math.max(1.3, displacementMultiplier - 0.2)
+strongBullishBody = body > avgBody * structureBodyThreshold and close > open and close > midpoint
+strongBearishBody = body > avgBody * structureBodyThreshold and close < open and close < midpoint
+
+enoughHistory = bar_index >= 10 and not na(avgRange) and not na(avgBody)
+weakCandle = enoughHistory and body < avgBody * 0.5
+
+bool bullishBOSSignal = false
+bool bearishBOSSignal = false
+bool bullishCHOCHSignal = false
+bool bearishCHOCHSignal = false
+float bullishBOSLevel = na
+float bearishBOSLevel = na
+float bullishCHOCHLevel = na
+float bearishCHOCHLevel = na
+int bullishBOSStartBar = na
+int bearishBOSStartBar = na
+int bullishCHOCHStartBar = na
+int bearishCHOCHStartBar = na
+bool bullishSweepMarker = false
+bool bearishSweepMarker = false
+bool eventLocked = false
+bool bullishCHOCHReady = false
+bool bearishCHOCHReady = false
+
+if barstate.isconfirmed and enoughHistory
+    liquiditySwept := false
+
+    if structureState == 1 and not weakCandle
+        candlesSince2CR += 1
+        if na(tempLow) or low < tempLow
+            tempLow := low
+            tempLowBar := bar_index
+        if close > confirmedHigh and bullishDisplacement and candlesSince2CR >= 1 and not bosTriggered
+            bullishBOSSignal := true
+            bullishBOSLevel := confirmedHigh
+            bullishBOSStartBar := nz(twoCRStartBar, bar_index)
+            bosTriggered := true
+            chochTriggered := false
+            confirmedLow := tempLow
+            lastBullishLow := confirmedLow
+            lastSignificantLow := confirmedLow
+            lastSignificantHigh := high
+            lastStructureDirection := 1
+            structureState := 0
+            candlesSince2CR := 0
+            tempLow := na
+            tempLowBar := na
+            if not na(activeConfirmedLowLine)
+                line.delete(activeConfirmedLowLine)
+            if showStructure and not na(confirmedLow)
+                activeConfirmedLowLine := line.new(nz(twoCRStartBar, bar_index), confirmedLow, bar_index, confirmedLow, xloc=xloc.bar_index, extend=extend.right, color=color.gray, style=line.style_dashed, width=1)
+
+    else if structureState == 2 and not weakCandle
+        candlesSince2CR += 1
+        if na(tempHigh) or high > tempHigh
+            tempHigh := high
+            tempHighBar := bar_index
+        if close < confirmedLow and bearishDisplacement and candlesSince2CR >= 1 and not bosTriggered
+            bearishBOSSignal := true
+            bearishBOSLevel := confirmedLow
+            bearishBOSStartBar := nz(twoCRStartBar, bar_index)
+            bosTriggered := true
+            chochTriggered := false
+            confirmedHigh := tempHigh
+            lastBearishHigh := confirmedHigh
+            lastSignificantHigh := confirmedHigh
+            lastSignificantLow := low
+            lastStructureDirection := -1
+            structureState := 0
+            candlesSince2CR := 0
+            tempHigh := na
+            tempHighBar := na
+            if not na(activeConfirmedHighLine)
+                line.delete(activeConfirmedHighLine)
+            if showStructure and not na(confirmedHigh)
+                activeConfirmedHighLine := line.new(nz(twoCRStartBar, bar_index), confirmedHigh, bar_index, confirmedHigh, xloc=xloc.bar_index, extend=extend.right, color=color.gray, style=line.style_dashed, width=1)
+
+    eventLocked := bullishBOSSignal or bearishBOSSignal
+
+    if structureState == 0 and not eventLocked and not weakCandle
+        bullishCHOCHReady := lastStructureDirection == -1 and not chochTriggered and not na(lastBearishHigh) and ((strongBullishCHOCH and strongBullishBody) or (consecutiveClosesAboveLRM and strongBullishBody))
+        bearishCHOCHReady := lastStructureDirection == 1 and not chochTriggered and not na(lastBullishLow) and ((strongBearishCHOCH and strongBearishBody) or (consecutiveClosesBelowLSM and strongBearishBody))
+
+        if bullishCHOCHReady
+            bullishCHOCHSignal := true
+            bullishCHOCHLevel := lastBearishHigh
+            bullishCHOCHStartBar := bar_index - 1
+            chochTriggered := true
+            bosTriggered := false
+            lastCHOCHDirection := 1
+            lastStructureDirection := 1
+            liquiditySwept := sweptLows
+            bullishSweepMarker := sweptLows
+            lastSignificantLow := low
+            lastSignificantHigh := high
+        else if bearishCHOCHReady
+            bearishCHOCHSignal := true
+            bearishCHOCHLevel := lastBullishLow
+            bearishCHOCHStartBar := bar_index - 1
+            chochTriggered := true
+            bosTriggered := false
+            lastCHOCHDirection := -1
+            lastStructureDirection := -1
+            liquiditySwept := sweptHighs
+            bearishSweepMarker := sweptHighs
+            lastSignificantLow := low
+            lastSignificantHigh := high
+        else
+            if bullish2CR
+                structureState := 1
+                bosTriggered := false
+                candlesSince2CR := 0
+                twoCRStartHigh := high[1]
+                twoCRStartLow := low[1]
+                twoCRStartBar := bar_index - 1
+                confirmedHigh := math.max(high[1], high)
+                tempLow := math.min(low[1], low)
+                tempLowBar := low <= low[1] ? bar_index : bar_index - 1
+                if not na(activeConfirmedHighLine)
+                    line.delete(activeConfirmedHighLine)
+                if showStructure and not na(confirmedHigh)
+                    activeConfirmedHighLine := line.new(twoCRStartBar, confirmedHigh, bar_index, confirmedHigh, xloc=xloc.bar_index, extend=extend.right, color=color.gray, style=line.style_dashed, width=1)
+            else if bearish2CR
+                structureState := 2
+                bosTriggered := false
+                candlesSince2CR := 0
+                twoCRStartHigh := high[1]
+                twoCRStartLow := low[1]
+                twoCRStartBar := bar_index - 1
+                confirmedLow := math.min(low[1], low)
+                tempHigh := math.max(high[1], high)
+                tempHighBar := high >= high[1] ? bar_index : bar_index - 1
+                if not na(activeConfirmedLowLine)
+                    line.delete(activeConfirmedLowLine)
+                if showStructure and not na(confirmedLow)
+                    activeConfirmedLowLine := line.new(twoCRStartBar, confirmedLow, bar_index, confirmedLow, xloc=xloc.bar_index, extend=extend.right, color=color.gray, style=line.style_dashed, width=1)
+
+if showBOS and bullishBOSSignal and not na(bullishBOSLevel)
+    line.new(bullishBOSStartBar, bullishBOSLevel, bar_index, bullishBOSLevel, xloc=xloc.bar_index, extend=extend.right, color=color.lime, width=2)
+    label.new(bar_index, bullishBOSLevel, "🟢 Bullish BOS", style=label.style_label_down, color=color.lime, textcolor=color.black)
+
+if showBOS and bearishBOSSignal and not na(bearishBOSLevel)
+    line.new(bearishBOSStartBar, bearishBOSLevel, bar_index, bearishBOSLevel, xloc=xloc.bar_index, extend=extend.right, color=color.red, width=2)
+    label.new(bar_index, bearishBOSLevel, "🔴 Bearish BOS", style=label.style_label_up, color=color.red, textcolor=color.white)
+
+if showCHOCH and bullishCHOCHSignal and not na(bullishCHOCHLevel)
+    line.new(bullishCHOCHStartBar, bullishCHOCHLevel, bar_index, bullishCHOCHLevel, xloc=xloc.bar_index, extend=extend.right, color=color.green, style=line.style_dotted, width=2)
+    label.new(bar_index, bullishCHOCHLevel, "Bullish CHOCH", style=label.style_label_down, color=color.green, textcolor=color.white)
+
+if showCHOCH and bearishCHOCHSignal and not na(bearishCHOCHLevel)
+    line.new(bearishCHOCHStartBar, bearishCHOCHLevel, bar_index, bearishCHOCHLevel, xloc=xloc.bar_index, extend=extend.right, color=color.maroon, style=line.style_dotted, width=2)
+    label.new(bar_index, bearishCHOCHLevel, "Bearish CHOCH", style=label.style_label_up, color=color.maroon, textcolor=color.white)
+
+plotshape(showLiquidity and bullishSweepMarker, title="Liquidity Sweep Low", style=shape.circle, location=location.belowbar, color=color.orange, size=size.tiny)
+plotshape(showLiquidity and bearishSweepMarker, title="Liquidity Sweep High", style=shape.circle, location=location.abovebar, color=color.orange, size=size.tiny)
