@@ -1,0 +1,70 @@
+//@version=6
+indicator("Top G Exact SMC v6", shorttitle="TopG Exact SMC v6", overlay=true, max_labels_count=500)
+
+minBarsBeforeSignals = input.int(5, "Minimum bars before signals", minval=2)
+showDebug = input.bool(false, "Show debug markers")
+showPendingLevels = input.bool(false, "Show pending BOS levels")
+requireConfirmedBars = input.bool(true, "Only trigger on confirmed bar close")
+
+var int structureState = 0
+var int lastStructureDirection = 0
+var float confirmedHigh = na
+var float confirmedLow = na
+barReady = bar_index >= math.max(minBarsBeforeSignals, 2)
+barConfirmed = not requireConfirmedBars or barstate.isconfirmed
+
+bearishRetracement2CR = barReady and close[1] < open[1] and close < open and close < low[1]
+bullishRetracement2CR = barReady and close[1] > open[1] and close > open and close > high[1]
+newBullishSetup = bearishRetracement2CR and close[2] >= open[2]
+newBearishSetup = bullishRetracement2CR and close[2] <= open[2]
+
+float bullishBreakLevel = na
+float bearishBreakLevel = na
+
+if newBullishSetup
+    bullishBreakLevel := high[2]
+    structureState := 1
+    confirmedHigh := bullishBreakLevel
+    confirmedLow := na
+else if newBearishSetup
+    bearishBreakLevel := low[2]
+    structureState := -1
+    confirmedLow := bearishBreakLevel
+    confirmedHigh := na
+
+bullishBOSSignal = barConfirmed and structureState == 1 and not na(confirmedHigh) and close > confirmedHigh
+bearishBOSSignal = barConfirmed and structureState == -1 and not na(confirmedLow) and close < confirmedLow
+
+bullishChoCHSignal = bullishBOSSignal and lastStructureDirection == -1
+bearishChoCHSignal = bearishBOSSignal and lastStructureDirection == 1
+
+if bullishBOSSignal
+    lastStructureDirection := 1
+    structureState := 0
+    confirmedHigh := na
+    confirmedLow := na
+
+if bearishBOSSignal
+    lastStructureDirection := -1
+    structureState := 0
+    confirmedLow := na
+    confirmedHigh := na
+
+plotshape(bullishBOSSignal and not bullishChoCHSignal, title="Bullish BOS", style=shape.labelup, location=location.belowbar, color=color.lime, text="BOS", textcolor=color.black, size=size.tiny)
+plotshape(bullishChoCHSignal, title="Bullish ChoCH", style=shape.labelup, location=location.belowbar, color=color.aqua, text="ChoCH", textcolor=color.black, size=size.tiny)
+plotshape(bearishBOSSignal and not bearishChoCHSignal, title="Bearish BOS", style=shape.labeldown, location=location.abovebar, color=color.red, text="BOS", textcolor=color.white, size=size.tiny)
+plotshape(bearishChoCHSignal, title="Bearish ChoCH", style=shape.labeldown, location=location.abovebar, color=color.orange, text="ChoCH", textcolor=color.white, size=size.tiny)
+
+plotshape(showDebug and newBullishSetup, title="Bullish 2CR debug", style=shape.circle, location=location.belowbar, color=color.new(color.green, 0), text="2CR+", textcolor=color.black, size=size.tiny)
+plotshape(showDebug and newBearishSetup, title="Bearish 2CR debug", style=shape.circle, location=location.abovebar, color=color.new(color.red, 0), text="2CR-", textcolor=color.white, size=size.tiny)
+plotshape(showDebug and structureState == 1 and not na(confirmedHigh) and close <= confirmedHigh, title="Bullish BOS pending debug", style=shape.xcross, location=location.abovebar, color=color.new(color.green, 40), text="H?", textcolor=color.black, size=size.tiny)
+plotshape(showDebug and structureState == -1 and not na(confirmedLow) and close >= confirmedLow, title="Bearish BOS pending debug", style=shape.xcross, location=location.belowbar, color=color.new(color.red, 40), text="L?", textcolor=color.white, size=size.tiny)
+plotchar(showDebug ? structureState : na, title="Structure state debug", char="S", location=location.bottom, color=color.gray, size=size.tiny)
+
+plot(showPendingLevels and structureState == 1 ? confirmedHigh : na, title="Pending bullish BOS level", color=color.new(color.green, 0), linewidth=2, style=plot.style_linebr)
+plot(showPendingLevels and structureState == -1 ? confirmedLow : na, title="Pending bearish BOS level", color=color.new(color.red, 0), linewidth=2, style=plot.style_linebr)
+
+alertcondition(bullishBOSSignal and not bullishChoCHSignal, "Bullish BOS", "Top G Exact SMC bullish BOS")
+alertcondition(bearishBOSSignal and not bearishChoCHSignal, "Bearish BOS", "Top G Exact SMC bearish BOS")
+alertcondition(bullishChoCHSignal, "Bullish ChoCH", "Top G Exact SMC bullish ChoCH")
+alertcondition(bearishChoCHSignal, "Bearish ChoCH", "Top G Exact SMC bearish ChoCH")
