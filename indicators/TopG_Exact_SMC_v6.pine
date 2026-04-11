@@ -1,0 +1,176 @@
+//@version=6
+indicator("Top G Exact SMC v6", overlay=true, max_lines_count=500, max_labels_count=500)
+
+showBOS = input.bool(true, "Show BOS")
+showChoCH = input.bool(true, "Show ChoCH")
+showStructure = input.bool(true, "Show Structure Levels")
+
+var float confirmedHigh = na
+var float confirmedLow = na
+var float LRM = na
+var float LSM = na
+var int structureState = 0
+var int lastStructureDirection = 0
+var bool bosTriggered = false
+var bool chochTriggered = false
+var int twoCRStartBar = na
+var float twoCRFirstCandleHigh = na
+var float twoCRFirstCandleLow = na
+var float tempLow = na
+var float tempHigh = na
+var int tempLowBar = na
+var int tempHighBar = na
+var int firstCloseAboveLRMBar = na
+var int firstCloseBelowLSMBar = na
+var line activeConfirmedHighLine = na
+var line activeConfirmedLowLine = na
+var int confirmedHighBar = na
+var int confirmedLowBar = na
+
+bullishBOSSignal = false
+bearishBOSSignal = false
+bullishChoCHSignal = false
+bearishChoCHSignal = false
+
+if barstate.isconfirmed and bar_index >= 10
+    if structureState == 1
+        if na(tempLow) or low < tempLow
+            tempLow := low
+            tempLowBar := bar_index
+        if close > confirmedHigh and not bosTriggered
+            bullishBOSSignal := true
+            bosTriggered := true
+            chochTriggered := false
+            confirmedLow := tempLow
+            confirmedLowBar := tempLowBar
+            LSM := confirmedLow
+            lastStructureDirection := 1
+            structureState := 0
+            if showBOS
+                line.new(confirmedHighBar, confirmedHigh, bar_index, confirmedHigh, xloc=xloc.bar_index, color=color.lime, width=2, style=line.style_solid)
+                label.new(bar_index, confirmedHigh, "🟢 Bullish BOS", style=label.style_label_down, color=color.lime, textcolor=color.white, size=size.small)
+            twoCRStartBar := na
+            twoCRFirstCandleHigh := na
+            twoCRFirstCandleLow := na
+            tempLow := na
+            tempHigh := na
+            tempLowBar := na
+            tempHighBar := na
+            firstCloseAboveLRMBar := na
+            firstCloseBelowLSMBar := na
+    else if structureState == 2
+        if na(tempHigh) or high > tempHigh
+            tempHigh := high
+            tempHighBar := bar_index
+        if close < confirmedLow and not bosTriggered
+            bearishBOSSignal := true
+            bosTriggered := true
+            chochTriggered := false
+            confirmedHigh := tempHigh
+            confirmedHighBar := tempHighBar
+            LRM := confirmedHigh
+            lastStructureDirection := -1
+            structureState := 0
+            if showBOS
+                line.new(confirmedLowBar, confirmedLow, bar_index, confirmedLow, xloc=xloc.bar_index, color=color.red, width=2, style=line.style_solid)
+                label.new(bar_index, confirmedLow, "🔴 Bearish BOS", style=label.style_label_up, color=color.red, textcolor=color.white, size=size.small)
+            twoCRStartBar := na
+            twoCRFirstCandleHigh := na
+            twoCRFirstCandleLow := na
+            tempLow := na
+            tempHigh := na
+            tempLowBar := na
+            tempHighBar := na
+            firstCloseAboveLRMBar := na
+            firstCloseBelowLSMBar := na
+
+    bullish2CR = structureState == 0 and not bullishBOSSignal and not bearishBOSSignal and close[1] < open[1] and close < open and close < low[1]
+    bearish2CR = structureState == 0 and not bullishBOSSignal and not bearishBOSSignal and close[1] > open[1] and close > open and close > high[1]
+
+    if bullish2CR
+        structureState := 1
+        bosTriggered := false
+        confirmedHigh := high[1]
+        confirmedHighBar := bar_index - 1
+        twoCRStartBar := bar_index - 1
+        twoCRFirstCandleHigh := high[1]
+        twoCRFirstCandleLow := low[1]
+        tempLow := low
+        tempLowBar := bar_index
+        tempHigh := na
+        tempHighBar := na
+        firstCloseAboveLRMBar := na
+        firstCloseBelowLSMBar := na
+    else if bearish2CR
+        structureState := 2
+        bosTriggered := false
+        confirmedLow := low[1]
+        confirmedLowBar := bar_index - 1
+        twoCRStartBar := bar_index - 1
+        twoCRFirstCandleHigh := high[1]
+        twoCRFirstCandleLow := low[1]
+        tempHigh := high
+        tempHighBar := bar_index
+        tempLow := na
+        tempLowBar := na
+        firstCloseAboveLRMBar := na
+        firstCloseBelowLSMBar := na
+
+    if structureState == 0 and not bullishBOSSignal and not bearishBOSSignal
+        if lastStructureDirection == -1 and not na(LRM)
+            if close > LRM
+                if na(firstCloseAboveLRMBar)
+                    firstCloseAboveLRMBar := bar_index
+                else if bar_index == firstCloseAboveLRMBar + 1 and close[1] > LRM and not chochTriggered
+                    bullishChoCHSignal := true
+                    chochTriggered := true
+                    if showChoCH
+                        line.new(firstCloseAboveLRMBar, LRM, bar_index, LRM, xloc=xloc.bar_index, color=color.green, width=2, style=line.style_dotted)
+                        label.new(bar_index, LRM, "Bullish ChoCH", style=label.style_label_down, color=color.green, textcolor=color.white, size=size.small)
+                    firstCloseAboveLRMBar := na
+                else
+                    firstCloseAboveLRMBar := bar_index
+            else
+                firstCloseAboveLRMBar := na
+        else
+            firstCloseAboveLRMBar := na
+
+        if lastStructureDirection == 1 and not na(LSM)
+            if close < LSM
+                if na(firstCloseBelowLSMBar)
+                    firstCloseBelowLSMBar := bar_index
+                else if bar_index == firstCloseBelowLSMBar + 1 and close[1] < LSM and not chochTriggered
+                    bearishChoCHSignal := true
+                    chochTriggered := true
+                    if showChoCH
+                        line.new(firstCloseBelowLSMBar, LSM, bar_index, LSM, xloc=xloc.bar_index, color=color.red, width=2, style=line.style_dotted)
+                        label.new(bar_index, LSM, "Bearish ChoCH", style=label.style_label_up, color=color.red, textcolor=color.white, size=size.small)
+                    firstCloseBelowLSMBar := na
+                else
+                    firstCloseBelowLSMBar := bar_index
+            else
+                firstCloseBelowLSMBar := na
+        else
+            firstCloseBelowLSMBar := na
+
+if showStructure and not na(confirmedHigh) and not na(confirmedHighBar)
+    if na(activeConfirmedHighLine)
+        activeConfirmedHighLine := line.new(confirmedHighBar, confirmedHigh, bar_index, confirmedHigh, xloc=xloc.bar_index, extend=extend.right, color=color.new(color.lime, 55), width=1)
+    else
+        line.set_xy1(activeConfirmedHighLine, confirmedHighBar, confirmedHigh)
+        line.set_xy2(activeConfirmedHighLine, bar_index, confirmedHigh)
+        line.set_color(activeConfirmedHighLine, color.new(color.lime, 55))
+else if not na(activeConfirmedHighLine)
+    line.delete(activeConfirmedHighLine)
+    activeConfirmedHighLine := na
+
+if showStructure and not na(confirmedLow) and not na(confirmedLowBar)
+    if na(activeConfirmedLowLine)
+        activeConfirmedLowLine := line.new(confirmedLowBar, confirmedLow, bar_index, confirmedLow, xloc=xloc.bar_index, extend=extend.right, color=color.new(color.red, 55), width=1)
+    else
+        line.set_xy1(activeConfirmedLowLine, confirmedLowBar, confirmedLow)
+        line.set_xy2(activeConfirmedLowLine, bar_index, confirmedLow)
+        line.set_color(activeConfirmedLowLine, color.new(color.red, 55))
+else if not na(activeConfirmedLowLine)
+    line.delete(activeConfirmedLowLine)
+    activeConfirmedLowLine := na
